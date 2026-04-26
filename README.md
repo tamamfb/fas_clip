@@ -2,6 +2,7 @@
 
 > **Implementation of [I-FAS (AAAI 2025)](https://arxiv.org/abs/2501.01720)** adapted for a 6-class Kaggle competition.  
 > Backbone: CLIP ViT-L/14@336px · Connector: GAC (depth=4, queries=96) · GPU: NVIDIA H200 141 GB
+> Datasets: https://drive.google.com/drive/folders/1S2KaTlW31bHUQS8_i56MuMM9aQypNj1X?usp=sharing
 
 ---
 
