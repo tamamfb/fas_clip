@@ -1,0 +1,198 @@
+================================================================
+  PANDUAN MENJALANKAN fas-6000.ipynb DI MODAL
+  GPU: NVIDIA H200 (141GB)
+================================================================
+
+----------------------------------------------------------------
+PERSIAPAN DI LOCAL (LAPTOP)
+----------------------------------------------------------------
+
+1. Install Modal CLI
+   Buka Command Prompt / PowerShell, jalankan:
+
+   pip install modal
+
+2. Login Modal
+   Jalankan:
+
+   modal setup
+
+   Browser akan terbuka otomatis. Login dengan akun Modal kamu.
+   Setelah selesai, terminal akan menampilkan "Web authentication finished".
+
+3. Buat Volume untuk Data dan Output
+   Jalankan satu per satu:
+
+   modal volume create fas-data
+   modal volume create fas-outputs
+
+   Cek apakah berhasil:
+
+   modal volume list
+
+   Pastikan kedua volume muncul.
+
+4. Upload Dataset ke Volume fas-data
+   Sesuaikan path ke folder dataset kamu:
+
+   modal volume put fas-data "D:\ITS\S1\Semester 6\DAC\train" train
+   modal volume put fas-data "D:\ITS\S1\Semester 6\DAC\test" test
+   modal volume put fas-data "D:\ITS\S1\Semester 6\DAC\samplesubmission.csv" samplesubmission.csv
+
+   Proses ini memakan waktu tergantung ukuran dataset.
+   Setelah selesai, verifikasi:
+
+   modal volume ls fas-data
+
+   Pastikan folder train/, test/, dan file samplesubmission.csv muncul.
+
+
+----------------------------------------------------------------
+SETUP DI MODAL JUPYTER
+----------------------------------------------------------------
+
+5. Buka Modal Jupyter
+   Pergi ke: https://modal.com/notebooks
+   Klik notebook "fas_6000" (atau upload file fas-6000.ipynb).
+
+6. Pilih GPU
+   Di bagian atas notebook, pastikan kernel menunjukkan:
+   "Kernel running - H200" atau sejenisnya.
+   Jika masih CPU, klik ikon settings kernel dan pilih GPU H200.
+
+7. Attach Volume fas-data
+   - Klik ikon "+" di bagian Volumes di sidebar kiri
+   - Pilih tab "Attach existing volume"
+   - Volume: fas-data
+   - Volume path: /data/fas
+   - Klik "Attach"
+
+8. Attach Volume fas-outputs
+   - Klik ikon "+" di bagian Volumes di sidebar kiri lagi
+   - Pilih tab "Attach existing volume"
+   - Volume: fas-outputs
+   - Volume path: /outputs
+   - Klik "Attach"
+
+   Pastikan kedua volume muncul di sidebar dengan path yang benar:
+   - fas-data  → mounted at /data/fas
+   - fas-outputs → mounted at /outputs
+
+9. Verifikasi Mount (opsional)
+   Buat cell baru di notebook dan jalankan:
+
+   import os
+   print(os.listdir('/data/fas'))
+   print(os.listdir('/outputs'))
+
+   Output pertama harus menampilkan: ['train', 'test', 'samplesubmission.csv']
+
+
+----------------------------------------------------------------
+MENJALANKAN NOTEBOOK
+----------------------------------------------------------------
+
+10. Run All Cells
+    Klik menu "Run" → "Run All Cells" atau jalankan satu per satu
+    dari atas ke bawah.
+
+11. Jangan Tutup Tab Sebelum Selesai
+    Kernel tetap berjalan di server Modal meskipun tab ditutup,
+    TAPI jika idle timeout habis (default 6 jam) setelah semua
+    cell selesai, kernel akan mati dan file di luar volume akan hilang.
+
+    Untuk mengubah idle timeout:
+    - Klik ikon settings kernel di sidebar
+    - Ubah "Idle timeout" ke durasi yang lebih panjang jika perlu
+
+12. Checkpoint Tersimpan Otomatis
+    Semua file .pth disimpan ke /outputs/v5/ yang merupakan
+    volume fas-outputs → data TIDAK akan hilang meski kernel mati.
+
+    File output:
+    - /outputs/v5/submission5.csv
+    - /outputs/v5/submission5_relabel.csv
+    - /outputs/v5/*.pth  (checkpoint model)
+
+
+----------------------------------------------------------------
+DOWNLOAD HASIL KE LOCAL
+----------------------------------------------------------------
+
+13. Download File Submission
+    Jalankan di Command Prompt / PowerShell laptop:
+
+    modal volume get fas-outputs v5/submission5.csv ./submission5.csv
+    modal volume get fas-outputs v5/submission5_relabel.csv ./submission5_relabel.csv
+
+14. Download Checkpoint Model Terbaik
+    Jalankan cell "Lihat BEST_CKPT" di notebook terlebih dahulu
+    untuk tahu nama file yang digunakan.
+
+    Contoh (sesuaikan nama file dari output notebook):
+
+    modal volume get fas-outputs v5/ps_r3_f10.9946_ep1.pth ./ps_r3_f10.9946_ep1.pth
+    modal volume get fas-outputs v5/s123_p3_f10.9947_ep1.pth ./s123_p3_f10.9947_ep1.pth
+    modal volume get fas-outputs v5/s456_p3_f10.9935_ep1.pth ./s456_p3_f10.9935_ep1.pth
+    modal volume get fas-outputs v5/s999_p3_f10.9851_ep3.pth ./s999_p3_f10.9851_ep3.pth
+
+15. Verifikasi File Submission
+    Buka submission5_relabel.csv, pastikan:
+    - Kolom: id, label
+    - Label menggunakan "fake_printed" (bukan "fake_print")
+    - Jumlah baris sesuai dengan jumlah test images
+
+
+----------------------------------------------------------------
+TROUBLESHOOTING
+----------------------------------------------------------------
+
+MASALAH: Kernel mati di tengah training
+SOLUSI:
+    - Buka kembali notebook di Modal
+    - Klik "Start kernel"
+    - Jangan run semua cell dari awal
+    - Cari cell terakhir yang selesai dari output yang tersimpan
+    - Load checkpoint terbaik yang ada dengan:
+      load_ckpt(model, '/outputs/v5/NAMA_FILE.pth')
+    - Lanjutkan dari phase berikutnya
+
+MASALAH: OutOfMemoryError saat inference
+SOLUSI:
+    - Pastikan INFER_BATCH = 16 (bukan nilai yang lebih besar)
+    - Tambahkan torch.cuda.empty_cache() sebelum inference
+    - Jika masih OOM, turunkan INFER_BATCH ke 8
+
+MASALAH: DataLoader worker crash (AssertionError: can only test a child process)
+SOLUSI:
+    - Pastikan semua DataLoader di fungsi inference menggunakan num_workers=0
+    - Ini BUKAN masalah di training loader, hanya inference
+
+MASALAH: Volume tidak muncul atau path salah
+SOLUSI:
+    - Pastikan path persis: /data/fas dan /outputs
+    - Restart kernel setelah attach volume
+    - Jalankan os.listdir('/data/fas') untuk verifikasi
+
+MASALAH: modal volume put sangat lambat
+SOLUSI:
+    - Upload menggunakan koneksi yang stabil
+    - Jika dataset besar, bisa zip dulu:
+      modal volume put fas-data ./dataset.zip dataset.zip
+      Lalu unzip di dalam notebook:
+      import zipfile
+      with zipfile.ZipFile('/data/fas/dataset.zip') as z:
+          z.extractall('/data/fas')
+
+
+----------------------------------------------------------------
+CATATAN BIAYA
+----------------------------------------------------------------
+
+- H200 di Modal dikenakan biaya per jam (cek modal.com/pricing)
+- Ada 30 dollar gratis untuk yang free tier
+- Volume storage juga dikenakan biaya kecil per GB per bulan
+- Matikan kernel setelah selesai untuk menghindari biaya idle:
+  Klik "Restart" → "Terminate" di Modal Jupyter
+
+================================================================
